@@ -23,7 +23,7 @@ export class Client {
     public static MempoolStatistics: typeof ClientMempoolStatistics;
     public static Network: typeof ClientNetwork;
     public static BasicAddress: typeof ClientBasicAddress;
-    public static AddressInfo:typeof  ClientAddressInfo;
+    public static AddressInfo: typeof ClientAddressInfo;
     public static PeerInfo: typeof ClientPeerInfo;
     public static NetworkStatistics: typeof ClientNetworkStatistics;
     public static TransactionDetails: typeof ClientTransactionDetails;
@@ -48,6 +48,7 @@ export class Client {
     };
     public network: Client.Network;
     public mempool: Client.Mempool;
+    public _consensusState: Client.ConsensusState;
     constructor(config: Client.Configuration | object, consensus?: Promise<BaseConsensus>);
     public getHeadHash(): Promise<Hash>;
     public getHeadHeight(): Promise<number>;
@@ -62,7 +63,7 @@ export class Client {
     public getTransactionReceipt(hash: Hash | string): Promise<TransactionReceipt | undefined>;
     public getTransactionReceiptsByAddress(address: Address | string, limit?: number): Promise<TransactionReceipt[]>;
     public getTransactionReceiptsByHashes(hashes: Array<Hash | string>): Promise<TransactionReceipt[]>;
-    public getTransactionsByAddress(address: Address | string, sinceBlockHeight?: number, knownTransactionDetails?: Client.TransactionDetails[] | ReturnType<Client.TransactionDetails["toPlain"]>[], limit?: number): Promise<Client.TransactionDetails[]>;
+    public getTransactionsByAddress(address: Address | string, sinceBlockHeight?: number, knownTransactionDetails?: Client.TransactionDetails[] | Array<ReturnType<Client.TransactionDetails['toPlain']>>, limit?: number): Promise<Client.TransactionDetails[]>;
     public sendTransaction(tx: Transaction | object | string): Promise<Client.TransactionDetails>;
     public addBlockListener(listener: BlockListener): Promise<Handle>;
     public addConsensusChangedListener(listener: ConsensusChangedListener): Promise<Handle>;
@@ -70,7 +71,6 @@ export class Client {
     public addTransactionListener(listener: TransactionListener, addresses: Array<Address | string>): Promise<Handle>;
     public removeListener(handle: Handle): Promise<void>;
     public waitForConsensusEstablished(): Promise<void>;
-    public _consensusState: Client.ConsensusState;
 }
 
 export namespace Client {
@@ -153,7 +153,7 @@ declare class ClientBasicAddress {
     public peerAddress: PeerAddress;
     public peerId: PeerId;
     public services: string[];
-    public netAddress: NetAddress | null;
+    public netAddress: NetAddress;
     constructor(address: PeerAddress);
     public toPlain(): {
         peerAddress: string,
@@ -175,6 +175,10 @@ declare class ClientAddressInfo extends ClientBasicAddress {
         peerAddress: string,
         peerId: string,
         services: string[],
+        netAddress: {
+            ip: Uint8Array,
+            reliable: boolean,
+        } | null,
         banned: boolean,
         connected: boolean,
     };
@@ -182,7 +186,6 @@ declare class ClientAddressInfo extends ClientBasicAddress {
 
 declare class ClientPeerInfo extends ClientBasicAddress {
     public connectionSince: number;
-    public netAddress: NetAddress;
     public bytesReceived: number;
     public bytesSent: number;
     public latency: number;
@@ -196,8 +199,11 @@ declare class ClientPeerInfo extends ClientBasicAddress {
         peerAddress: string,
         peerId: string,
         services: string[],
+        netAddress: {
+            ip: Uint8Array,
+            reliable: boolean,
+        } | null,
         connectionSince: number,
-        netAddress: string,
         bytesReceived: number,
         bytesSent: number,
         latency: number,
