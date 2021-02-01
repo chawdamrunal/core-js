@@ -678,30 +678,10 @@ class JsonRpcServer {
      */
     _accountToObj(account, address) {
         if (!account) return null;
-        const obj = {
-            id: address.toHex(),
-            address: address.toUserFriendlyAddress(),
-            balance: account.balance,
-            type: account.type
-        };
-        if (account instanceof Nimiq.VestingContract) {
-            obj.owner = account.owner.toHex();
-            obj.ownerAddress = account.owner.toUserFriendlyAddress();
-            obj.vestingStart = account.vestingStart;
-            obj.vestingStepBlocks = account.vestingStepBlocks;
-            obj.vestingStepAmount = account.vestingStepAmount;
-            obj.vestingTotalAmount = account.vestingTotalAmount;
-        } else if (account instanceof Nimiq.HashedTimeLockedContract) {
-            obj.sender = account.sender.toHex();
-            obj.senderAddress = account.sender.toUserFriendlyAddress();
-            obj.recipient = account.recipient.toHex();
-            obj.recipientAddress = account.recipient.toUserFriendlyAddress();
-            obj.hashRoot = account.hashRoot.toHex();
-            obj.hashAlgorithm = account.hashRoot.algorithm;
-            obj.hashCount = account.hashCount;
-            obj.timeout = account.timeout;
-            obj.totalAmount = account.totalAmount;
-        }
+
+        const obj = account.toPlain();
+        obj.address = address.toUserFriendlyAddress();
+
         return obj;
     }
 
@@ -713,18 +693,11 @@ class JsonRpcServer {
     _infoToPeerObj(peerInfo, addressInfo) {
         const basicAddress = peerInfo || addressInfo;
         if (!basicAddress) return null;
-        return {
-            id: basicAddress.peerId ? basicAddress.peerId.toHex() : null,
-            address: basicAddress.peerAddress.toString(),
-            addressState: addressInfo ? addressInfo.state : undefined,
-            connectionState: peerInfo ? peerInfo.state : undefined,
-            version: peerInfo ? peerInfo.version : undefined,
-            timeOffset: peerInfo ? peerInfo.timeOffset : undefined,
-            headHash: peerInfo && peerInfo.headHash ? peerInfo.headHash.toHex() : undefined,
-            latency: peerInfo ? peerInfo.latency : undefined,
-            rx: peerInfo ? peerInfo.bytesReceived : undefined,
-            tx: peerInfo ? peerInfo.bytesSent : undefined
-        };
+
+        const obj = peerInfo.toPlain();
+        obj.addressState = addressInfo ? addressInfo.state : undefined;
+
+        return obj;
     }
 
     /**
@@ -733,27 +706,16 @@ class JsonRpcServer {
      * @private
      */
     async _blockToObj(block, includeTransactions = false) {
-        const obj = {
-            number: block.height,
-            hash: block.hash().toHex(),
-            pow: (await block.pow()).toHex(),
-            parentHash: block.prevHash.toHex(),
-            nonce: block.nonce,
-            bodyHash: block.bodyHash.toHex(),
-            accountsHash: block.accountsHash.toHex(),
-            difficulty: block.difficulty,
-            timestamp: block.timestamp,
-            confirmations: (await this._client.getHeadHeight()) - block.height
-        };
-        if (block.isFull()) {
-            obj.miner = block.minerAddr.toHex();
-            obj.minerAddress = block.minerAddr.toUserFriendlyAddress();
-            obj.extraData = Nimiq.BufferUtils.toHex(block.body.extraData);
-            obj.size = block.serializedSize;
-            obj.transactions = includeTransactions
-                ? await Promise.all(block.transactions.map((tx, i) => this._transactionToObj(tx, block, i)))
-                : block.transactions.map((tx) => tx.hash().toHex());
+        const obj = block.toPlain();
+        obj.size = block.serializedSize;
+        obj.confirmations = (await this._client.getHeadHeight()) - block.height + 1;
+        obj.pow = (await block.pow()).toHex();
+
+        if (!includeTransactions) {
+            // Downgrade transactions to their hashes
+            obj.transactions = obj.transactions.map(tx => tx.transactionHash);
         }
+
         return obj;
     }
 
@@ -764,44 +726,22 @@ class JsonRpcServer {
      * @private
      */
     async _transactionToObj(tx, block, i) {
-        return {
-            hash: tx.hash().toHex(),
-            blockHash: block ? block.hash().toHex() : undefined,
-            blockNumber: block ? block.height : undefined,
-            timestamp: block ? block.timestamp : undefined,
-            confirmations: block ? (await this._client.getHeadHeight()) - block.height + 1 : 0,
-            transactionIndex: i,
-            from: tx.sender.toHex(),
-            fromAddress: tx.sender.toUserFriendlyAddress(),
-            to: tx.recipient.toHex(),
-            toAddress: tx.recipient.toUserFriendlyAddress(),
-            value: tx.value,
-            fee: tx.fee,
-            data: Nimiq.BufferUtils.toHex(tx.data) || null,
-            flags: tx.flags
-        };
+        if (block) {
+            const confirmations = (await this._client.getHeadHeight()) - block.height + 1;
+            const state = confirmations >= 10 ? Client.TransactionState.CONFIRMED : Client.TransactionState.MINED;
+
+            return new Nimiq.Client.TransactionDetails(tx, state, block.hash(), block.height, confirmations, block.timestamp).toPlain();
+        } else {
+            return tx.toPlain();
+        }
     }
 
     /**
      * @param {Client.TransactionDetails} tx
      * @private
      */
-    _transactionDetailsToObj(tx) {
-        return {
-            hash: tx.transactionHash.toHex(),
-            blockHash: tx.blockHash ? tx.blockHash.toHex() : undefined,
-            blockNumber: tx.blockHeight,
-            timestamp: tx.timestamp,
-            confirmations: tx.confirmations,
-            from: tx.sender.toHex(),
-            fromAddress: tx.sender.toUserFriendlyAddress(),
-            to: tx.recipient.toHex(),
-            toAddress: tx.recipient.toUserFriendlyAddress(),
-            value: tx.value,
-            fee: tx.fee,
-            data: Nimiq.BufferUtils.toHex(tx.data.raw) || null,
-            flags: tx.flags
-        };
+    _transactionDetailsToObj(txDetails) {
+        return txDetails.toPlain();
     }
 
     /**
@@ -817,17 +757,6 @@ class JsonRpcServer {
         };
         if (withPrivateKey) a.privateKey = wallet.keyPair.privateKey.toHex();
         return a;
-    }
-
-    /**
-     * @param {Address} address
-     * @private
-     */
-    _addressToObj(address) {
-        return {
-            id: address.toHex(),
-            address: address.toUserFriendlyAddress()
-        };
     }
 
     _onRequest(req, res) {
